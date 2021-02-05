@@ -13,6 +13,7 @@ import re
 
 id_parser = re.compile('^(hCoV19|hCoV_19){1}_([A-Za-z]+)_', re.IGNORECASE)
 
+
 class Probe(object):
     def __init__(self, id, start, end, seq, reference=None):
         self.id = id
@@ -34,9 +35,6 @@ class Probe(object):
 
     def __str__(self):
         return self.id
-
-
-
 
 
 def col_f(col, alphabet=['A', 'T', 'C', 'G', '-']):
@@ -86,20 +84,31 @@ def extract_info_from_id(record_id):
     return annotation
 
 
-def search_primers(aligner, record, probes):
-    for probe in probes:
-        try:
-            aln = aligner.align(record.seq, probe.sequence)[0]
-            primer_location = aln.aligned[0]
-            for loc in primer_location:
-                exact_location = FeatureLocation(loc[0], loc[1] - 1)
-                record.features.append(SeqFeature(location=exact_location, strand=1, type='probe', id=probe.id))
-        except ValueError:
-            print("Error")
+class ProbeFinder(object):
+    def __init__(self, probes, open_gap_score=-0.5, extend_gap_score=-0.25, **kwargs):
+        self.aligner = Align.PairwiseAligner()
+        self.aligner.mode = 'local'
+        self.aligner.open_gap_score = open_gap_score
+        self.aligner.extend_gap_score = extend_gap_score
+        # TODO: put defined alphabet instead of adhoc alphabet
+        self.aligner.alphabet = ['A', 'T', 'C', 'G', '-', 'N', 'W', 'Y', 'M', 'R', 'V', 'S', 'H']
+        self.probes = probes
 
+    def search(self, record):
+        features = list()
+        for probe in self.probes:
+            try:
+                aln = self.aligner.align(record.seq, probe.sequence)[0]
+                primer_location = aln.aligned[0]
+                for loc in primer_location:
+                    exact_location = FeatureLocation(loc[0], loc[1] - 1)
+                    features.append(SeqFeature(location=exact_location, strand=1, type='probe', id=probe.id))
+            except ValueError:
+                print("Error")
+        return features
 
 def main(msa_input, fmt):
-    msa = AlignIO.read(msa_input, format=fmt)
+    msa = SeqIO.parse(msa_input, format=fmt)
 
     # Load reference from GenBank record
     reference_sequence = SeqIO.read('data/MN908947_sequence.gb', 'genbank')
@@ -109,40 +118,32 @@ def main(msa_input, fmt):
     probes = [Probe(**p, reference=reference_sequence) for p in probes_data]
     assert all([p.status for p in probes])
 
-    aligner = Align.PairwiseAligner()
-    aligner.mode = 'local'
-    aligner.open_gap_score = -0.5
-    aligner.extend_gap_score = -0.25
-    # TODO: put defined alphabet instead of adhoc alphabet
-    aligner.alphabet = ['A', 'T', 'C', 'G', '-', 'N', 'W', 'Y', 'M', 'R', 'V', 'S', 'H']
+    pf = ProbeFinder(probes=probes)
+    aln = Align.PairwiseAligner()
+    aln.mode = 'global'
+    aln.open_gap_score = -5
+    aln.extend_gap_score = -2
+    aln.alphabet = ['A', 'T', 'C', 'G', '-', 'N', 'W', 'Y', 'M', 'R', 'V', 'S', 'H']
 
     for record in msa:
         annot = extract_info_from_id(record.id)
         record.annotations = annot
-        search_primers(aligner=aligner, record=record, probes=probes)
 
+        # Ungap only if records are previously aligned
+        record_aln = aln.align(reference_sequence.seq, record.seq.ungap('-'))[0]
 
-    print("Hola")
+        print(record_aln)
 
+        feat = pf.search(record=record)
+        record.features += feat
 
-
-    #dat = pd.DataFrame({'pos': range(l), 'bit_score': bit_score})
-
-    #plt = (ggplot(dat) + aes(x='pos', y='bit_score') + geom_line(size=0.4))
-
-
-
-
-
-
-    for loc in primer_location:
-        msa_primer = msa[:, loc[0]:loc[1]]
-        score = score_msa(msa_primer)
-        print(score)
+        print(record.annotations)
+        for feat in record.features:
+            print(feat.extract(record.seq))
 
 
 
-# Press the green button in the gutter to run the script.
+
 if __name__ == '__main__':
     main('data/GISAID_100.maff.fa', 'fasta')
 
