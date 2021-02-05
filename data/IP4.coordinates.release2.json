@@ -1,0 +1,20 @@
+[
+  {
+    "id": "C_IP4_F",
+    "seq": "GGTAACTGGTATGATTTCG",
+    "start": 14080,
+    "end": 14098
+  },
+  {
+    "id": "C_IP4_R",
+    "seq": "CCTATATTAACCTTGACCAG",
+    "start": 14167,
+    "end": 14186
+  },
+  {
+    "id": "C_IP4_P",
+    "seq": "TCATACAAACCACGCCAGG",
+    "start": 14105,
+    "end": 14123
+  }
+]
